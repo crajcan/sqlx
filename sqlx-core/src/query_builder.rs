@@ -1,9 +1,19 @@
-pub struct QueryBuilder;
+pub struct QueryBuilder {
+    query: String,
+}
 
 impl QueryBuilder {
-    pub fn new() -> Self {
-        println!("Making a query builder");
+    pub fn new(init: impl Into<String>) -> Self {
+        QueryBuilder { query: init.into() }
+    }
+}
 
-        Self
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        assert_eq!("", QueryBuilder::new("").query);
     }
 }
