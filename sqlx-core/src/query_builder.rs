@@ -15,6 +15,7 @@ where
     query: String,
     buf: <DB as HasArguments<'a>>::ArgumentBuffer,
     // q: Query<'a, DB, A>,
+    variable_count: u16,
 }
 
 impl<'a, DB: Database> QueryBuilder<'a, DB>
@@ -35,6 +36,7 @@ where
             //     database: PhantomData,
             //     persistent: true,
             // },
+            variable_count: 1,
         }
     }
 
@@ -45,7 +47,10 @@ where
     }
 
     pub fn push_bind(&mut self, value: impl Encode<'a, DB>) -> &mut Self {
+        self.query.push_str(&format!("${}", self.variable_count));
         value.encode(&mut self.buf);
+
+        self.variable_count += 1;
 
         self
     }
@@ -88,10 +93,29 @@ mod test {
 
     #[test]
     fn test_push_bind() {
-        let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT * FROM users");
-        let second_line = "WHERE last_name.id = ?";
-        let value: i32 = 42;
+        let mut qb: QueryBuilder<'_, Postgres> =
+            QueryBuilder::new("SELECT * FROM users WHERE id = ");
 
-        assert_eq!(*qb.push_bind(value).buf, vec![0, 0, 0, 42u8]);
+        qb.push_bind(42i32)
+            .push("OR user.membership_level = ")
+            .push_bind(3i32);
+
+        assert_eq!(
+            qb.query,
+            "SELECT * FROM users WHERE id = $1 OR user.membership_level = $2"
+        );
+        assert_eq!(*qb.buf, vec![0, 0, 0, 42u8, 0, 0, 0, 3u8]);
     }
+
+    // #[test]
+    // fn test_build() {
+    //     let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT * FROM users")
+    //         .push("WHERE id = $1")
+    //         .push_bind(42);
+
+    //     assert_eq!(
+    //         "SELECT * FROM users WHERE last_name LIKE '[A-N]%;".to_string(),
+    //         qb.push(second_line).query
+    //     );
+    // }
 }
