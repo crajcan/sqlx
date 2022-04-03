@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use crate::arguments::IntoArguments;
 use crate::database::{Database, HasArguments};
 use crate::encode::Encode;
 use crate::query::Query;
@@ -71,31 +70,21 @@ mod test {
     use super::*;
     use crate::postgres::Postgres;
 
-    struct MyQuerySegment {
-        sql: String,
-    }
-
-    impl Display for MyQuerySegment {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}", self.sql)
-        }
-    }
-
     #[test]
     fn test_new() {
-        let first_line = "SELECT * FROM users";
-        let qb: QueryBuilder<'_, Postgres> = QueryBuilder::new(first_line);
-        assert_eq!(first_line, qb.query);
+        let qb: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT * FROM users");
+        assert_eq!(qb.query, "SELECT * FROM users");
     }
 
     #[test]
     fn test_push() {
         let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT * FROM users");
         let second_line = "WHERE last_name LIKE '[A-N]%;";
+        qb.push(second_line);
 
         assert_eq!(
+            qb.query,
             "SELECT * FROM users WHERE last_name LIKE '[A-N]%;".to_string(),
-            qb.push(second_line).query
         );
     }
 
@@ -105,14 +94,35 @@ mod test {
             QueryBuilder::new("SELECT * FROM users WHERE id = ");
 
         qb.push_bind(42i32)
-            .push("OR user.membership_level = ")
+            .push("OR membership_level = ")
             .push_bind(3i32);
 
         assert_eq!(
             qb.query,
-            "SELECT * FROM users WHERE id = $1 OR user.membership_level = $2"
+            "SELECT * FROM users WHERE id = $1 OR membership_level = $2"
         );
         assert_eq!(*qb.buf.unwrap(), vec![0, 0, 0, 42u8, 0, 0, 0, 3u8]);
+    }
+
+    #[test]
+    fn test_push_bind_handles_strings() {
+        let mut qb: QueryBuilder<'_, Postgres> =
+            QueryBuilder::new("SELECT * FROM users WHERE id = ");
+
+        qb.push_bind(42i32)
+            .push("AND last_name = ")
+            .push_bind("'Doe'")
+            .push("AND membership_level = ")
+            .push_bind(3i32);
+
+        assert_eq!(
+            qb.query,
+            "SELECT * FROM users WHERE id = $1 AND last_name = $2 AND membership_level = $3"
+        );
+        assert_eq!(
+            *qb.buf.unwrap(),
+            vec![0, 0, 0, 42u8, 39, 68, 111, 101, 39, 0, 0, 0, 3u8]
+        );
     }
 
     #[test]
