@@ -12,7 +12,7 @@ where
     DB: Database,
 {
     query: String,
-    buf: <DB as HasArguments<'a>>::ArgumentBuffer,
+    buf: Option<<DB as HasArguments<'a>>::ArgumentBuffer>,
     // q: Query<'a, DB, A>,
     variable_count: u16,
 }
@@ -27,7 +27,7 @@ where
     {
         QueryBuilder {
             query: init.into(),
-            buf: Default::default(),
+            buf: Some(Default::default()),
             // q: Query {
             //     statement: either::Left(&init.into()),
             //     arguments: Some(Default::default()),
@@ -46,19 +46,38 @@ where
 
     pub fn push_bind(&mut self, value: impl Encode<'a, DB>) -> &mut Self {
         self.query.push_str(&format!("${}", self.variable_count));
-        value.encode(&mut self.buf);
 
-        self.variable_count += 1;
+        match &self.buf {
+            Some(buf) => (),
+            None => panic!("Arguments taken already"),
+        }
+
+        match self.buf {
+            Some(ref mut buf) => {
+                value.encode(buf);
+                self.variable_count += 1;
+            }
+            None => (),
+        }
 
         self
     }
 
     pub fn build(&mut self) -> Query<'_, DB, <DB as HasArguments<'a>>::ArgumentBuffer> {
-        Query {
-            statement: Either::Left(&self.query),
-            arguments: None,
-            database: PhantomData,
-            persistent: true,
+        if let Some(buffer) = self.buf.take() {
+            Query {
+                statement: Either::Left(&self.query),
+                arguments: Some(buffer),
+                database: PhantomData,
+                persistent: true,
+            }
+        } else {
+            Query {
+                statement: Either::Left(&self.query),
+                arguments: None,
+                database: PhantomData,
+                persistent: true,
+            }
         }
     }
 }
@@ -109,7 +128,7 @@ mod test {
             qb.query,
             "SELECT * FROM users WHERE id = $1 OR user.membership_level = $2"
         );
-        assert_eq!(*qb.buf, vec![0, 0, 0, 42u8, 0, 0, 0, 3u8]);
+        assert_eq!(*qb.buf.unwrap(), vec![0, 0, 0, 42u8, 0, 0, 0, 3u8]);
     }
 
     #[test]
