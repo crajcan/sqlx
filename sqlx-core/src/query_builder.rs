@@ -38,7 +38,6 @@ where
     }
 
     pub fn push_bind(&mut self, value: impl Encode<'a, DB>) -> &mut Self {
-
         match self.buf {
             Some(ref mut buf) => {
                 value.encode(buf);
@@ -127,7 +126,7 @@ mod test {
             query.statement.unwrap_left(),
             "SELECT * FROM users WHERE id = $1"
         );
-        // assert_eq!(query.arguments.unwrap().as_slice(), vec![0, 0, 0, 42u8]);
+        assert_eq!(query.arguments.unwrap().as_slice(), vec![0, 0, 0, 42u8]);
         assert_eq!(query.persistent, true);
     }
 }
