@@ -10,7 +10,6 @@ use std::marker::PhantomData;
 pub struct QueryBuilder<'a, DB>
 where
     DB: Database,
-    // A: IntoArguments<'a, DB>,
 {
     query: String,
     buf: <DB as HasArguments<'a>>::ArgumentBuffer,
@@ -21,7 +20,6 @@ where
 impl<'a, DB: Database> QueryBuilder<'a, DB>
 where
     DB: Database,
-    // A: IntoArguments<'a, DB> + std::default::Default,
 {
     pub fn new(init: impl Into<String>) -> Self
     where
@@ -55,7 +53,14 @@ where
         self
     }
 
-    // pub fn build(&mut self) -> Query<'static, DB, A> {}
+    pub fn build(&mut self) -> Query<'_, DB, <DB as HasArguments<'a>>::ArgumentBuffer> {
+        Query {
+            statement: Either::Left(&self.query),
+            arguments: None,
+            database: PhantomData,
+            persistent: true,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -107,15 +112,18 @@ mod test {
         assert_eq!(*qb.buf, vec![0, 0, 0, 42u8, 0, 0, 0, 3u8]);
     }
 
-    // #[test]
-    // fn test_build() {
-    //     let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT * FROM users")
-    //         .push("WHERE id = $1")
-    //         .push_bind(42);
+    #[test]
+    fn test_build() {
+        let mut qb: QueryBuilder<'_, Postgres> = QueryBuilder::new("SELECT * FROM users");
 
-    //     assert_eq!(
-    //         "SELECT * FROM users WHERE last_name LIKE '[A-N]%;".to_string(),
-    //         qb.push(second_line).query
-    //     );
-    // }
+        qb.push("WHERE id = ").push_bind(42i32);
+        let query = qb.build();
+
+        assert_eq!(
+            query.statement.unwrap_left(),
+            "SELECT * FROM users WHERE id = $1"
+        );
+        // assert_eq!(query.arguments.unwrap().as_slice(), vec![0, 0, 0, 42u8]);
+        assert_eq!(query.persistent, true);
+    }
 }
