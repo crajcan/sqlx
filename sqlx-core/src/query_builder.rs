@@ -13,7 +13,6 @@ where
 {
     query: String,
     buf: Option<<DB as HasArguments<'a>>::ArgumentBuffer>,
-    // q: Query<'a, DB, A>,
     variable_count: u16,
 }
 
@@ -28,13 +27,7 @@ where
         QueryBuilder {
             query: init.into(),
             buf: Some(Default::default()),
-            // q: Query {
-            //     statement: either::Left(&init.into()),
-            //     arguments: Some(Default::default()),
-            //     database: PhantomData,
-            //     persistent: true,
-            // },
-            variable_count: 1,
+            variable_count: 0,
         }
     }
 
@@ -45,39 +38,31 @@ where
     }
 
     pub fn push_bind(&mut self, value: impl Encode<'a, DB>) -> &mut Self {
-        self.query.push_str(&format!("${}", self.variable_count));
-
-        match &self.buf {
-            Some(buf) => (),
-            None => panic!("Arguments taken already"),
-        }
 
         match self.buf {
             Some(ref mut buf) => {
                 value.encode(buf);
                 self.variable_count += 1;
+                self.query.push_str(&format!("${}", self.variable_count));
             }
-            None => (),
+            None => panic!("Arguments taken already"),
         }
 
         self
     }
 
     pub fn build(&mut self) -> Query<'_, DB, <DB as HasArguments<'a>>::ArgumentBuffer> {
-        if let Some(buffer) = self.buf.take() {
-            Query {
-                statement: Either::Left(&self.query),
-                arguments: Some(buffer),
-                database: PhantomData,
-                persistent: true,
-            }
+        let arugments = if let Some(buffer) = self.buf.take() {
+            Some(buffer)
         } else {
-            Query {
-                statement: Either::Left(&self.query),
-                arguments: None,
-                database: PhantomData,
-                persistent: true,
-            }
+            None
+        };
+
+        Query {
+            statement: Either::Left(&self.query),
+            arguments: arugments,
+            database: PhantomData,
+            persistent: true,
         }
     }
 }
