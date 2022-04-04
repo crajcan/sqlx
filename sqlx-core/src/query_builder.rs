@@ -70,7 +70,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::postgres::{PgArguments, Postgres};
+    use crate::postgres::Postgres;
 
     #[test]
     fn test_new() {
@@ -103,10 +103,7 @@ mod test {
             qb.query,
             "SELECT * FROM users WHERE id = $1 OR membership_level = $2"
         );
-        assert_eq!(
-            qb.arguments.encode(buf),
-            PgArguments { values: vec![42i32, 3i32] }
-       );
+        assert_eq!(qb.variable_count, 2);
     }
 
     #[test]
@@ -115,19 +112,16 @@ mod test {
             QueryBuilder::new("SELECT * FROM users WHERE id = ");
 
         qb.push_bind(42i32)
-            .push("AND last_name = ")
+            .push("OR last_name = ")
             .push_bind("'Doe'")
             .push("AND membership_level = ")
             .push_bind(3i32);
 
         assert_eq!(
             qb.query,
-            "SELECT * FROM users WHERE id = $1 AND last_name = $2 AND membership_level = $3"
+            "SELECT * FROM users WHERE id = $1 OR last_name = $2 AND membership_level = $3"
         );
-        assert_eq!(
-            *qb.buf.unwrap(),
-            vec![0, 0, 0, 42u8, 39, 68, 111, 101, 39, 0, 0, 0, 3u8]
-        );
+        assert_eq!(qb.variable_count, 3);
     }
 
     #[test]
@@ -141,7 +135,6 @@ mod test {
             query.statement.unwrap_left(),
             "SELECT * FROM users WHERE id = $1"
         );
-        assert_eq!(query.arguments.unwrap().as_slice(), vec![0, 0, 0, 42u8]);
         assert_eq!(query.persistent, true);
     }
 }
