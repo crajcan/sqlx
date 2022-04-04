@@ -46,7 +46,8 @@ where
             Some(ref mut arguments) => {
                 arguments.add(value);
                 self.variable_count += 1;
-                self.query.push_str(&format!("${}", self.variable_count));
+                self.query
+                    .push_str(&arguments.place_holder(self.variable_count));
             }
             None => panic!("Arguments taken already"),
         }
