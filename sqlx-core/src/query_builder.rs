@@ -1,8 +1,10 @@
 use std::fmt::Display;
 
+use crate::arguments::Arguments;
 use crate::database::{Database, HasArguments};
 use crate::encode::Encode;
 use crate::query::Query;
+use crate::types::Type;
 use either::Either;
 use std::marker::PhantomData;
 
@@ -11,7 +13,7 @@ where
     DB: Database,
 {
     query: String,
-    buf: Option<<DB as HasArguments<'a>>::ArgumentBuffer>,
+    arguments: Option<<DB as HasArguments<'a>>::Arguments>,
     variable_count: u16,
 }
 
@@ -21,11 +23,11 @@ where
 {
     pub fn new(init: impl Into<String>) -> Self
     where
-        <DB as HasArguments<'a>>::ArgumentBuffer: Default,
+        <DB as HasArguments<'a>>::Arguments: Default,
     {
         QueryBuilder {
             query: init.into(),
-            buf: Some(Default::default()),
+            arguments: Some(Default::default()),
             variable_count: 0,
         }
     }
@@ -36,10 +38,13 @@ where
         self
     }
 
-    pub fn push_bind(&mut self, value: impl Encode<'a, DB>) -> &mut Self {
-        match self.buf {
-            Some(ref mut buf) => {
-                value.encode(buf);
+    pub fn push_bind<A>(&mut self, value: A) -> &mut Self
+    where
+        A: 'a + Encode<'a, DB> + Send + Type<DB>,
+    {
+        match self.arguments {
+            Some(ref mut arguments) => {
+                arguments.add(value);
                 self.variable_count += 1;
                 self.query.push_str(&format!("${}", self.variable_count));
             }
@@ -49,16 +54,13 @@ where
         self
     }
 
-    pub fn build(&mut self) -> Query<'_, DB, <DB as HasArguments<'a>>::ArgumentBuffer> {
-        let arugments = if let Some(buffer) = self.buf.take() {
-            Some(buffer)
-        } else {
-            None
-        };
-
+    pub fn build(&mut self) -> Query<'_, DB, <DB as HasArguments<'a>>::Arguments> {
         Query {
             statement: Either::Left(&self.query),
-            arguments: arugments,
+            arguments: match self.arguments.take() {
+                Some(arguments) => Some(arguments),
+                None => None,
+            },
             database: PhantomData,
             persistent: true,
         }
@@ -68,7 +70,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::postgres::Postgres;
+    use crate::postgres::{PgArguments, Postgres};
 
     #[test]
     fn test_new() {
@@ -101,7 +103,10 @@ mod test {
             qb.query,
             "SELECT * FROM users WHERE id = $1 OR membership_level = $2"
         );
-        assert_eq!(*qb.buf.unwrap(), vec![0, 0, 0, 42u8, 0, 0, 0, 3u8]);
+        assert_eq!(
+            qb.arguments.encode(buf),
+            PgArguments { values: vec![42i32, 3i32] }
+       );
     }
 
     #[test]
